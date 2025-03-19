@@ -1,0 +1,1339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Toll Booth Nightmare</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'terminal-green': '#0c3',
+            'terminal-black': '#111',
+            'terminal-red': '#f33',
+          },
+          fontFamily: {
+            mono: ['Courier New', 'monospace'],
+          },
+        },
+      },
+      darkMode: 'class',
+    }
+  </script>
+  <style>
+    @keyframes glitch {
+      0% { transform: translate(0) }
+      20% { transform: translate(-2px, 2px) }
+      40% { transform: translate(-2px, -2px) }
+      60% { transform: translate(2px, 2px) }
+      80% { transform: translate(2px, -2px) }
+      100% { transform: translate(0) }
+    }
+    .glitch {
+      animation: glitch 0.3s ease-in-out;
+    }
+    .scanline {
+      background: linear-gradient(to bottom, transparent, rgba(12, 51, 33, 0.2), transparent);
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      opacity: 0.6;
+      animation: scanline 10s linear infinite;
+    }
+    @keyframes scanline {
+      0% { transform: translateY(-100%) }
+      100% { transform: translateY(100%) }
+    }
+    .terminal-window {
+      background-color: #111;
+      color: #0c3;
+      font-family: 'Courier New', monospace;
+      text-shadow: 0 0 5px rgba(0, 204, 51, 0.5);
+      position: relative;
+      overflow: hidden;
+    }
+    .terminal-window::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.15),
+        rgba(0, 0, 0, 0.15) 1px,
+        transparent 1px,
+        transparent 2px
+      );
+      pointer-events: none;
+    }
+    .screen-flicker {
+      animation: flicker 3s infinite;
+    }
+    @keyframes flicker {
+      0% { opacity: 1.0; }
+      92% { opacity: 1.0; }
+      93% { opacity: 0.8; }
+      94% { opacity: 1.0; }
+      98% { opacity: 1.0; }
+      99% { opacity: 0.8; }
+      100% { opacity: 1.0; }
+    }
+    
+    /* Dark mode styles */
+    .dark .terminal-window {
+      background-color: #0a0a0a;
+      color: #0c3;
+    }
+    
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #111;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #0c3;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #0a2;
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-mono min-h-screen">
+  <!-- Game start modal -->
+  <div id="startModal" class="fixed inset-0 bg-black bg-opacity-95 flex items-center justify-center z-50">
+    <div class="terminal-window p-6 md:p-8 max-w-lg w-full mx-4 border border-terminal-green rounded relative">
+      <div class="scanline"></div>
+      <h1 class="text-xl md:text-2xl text-terminal-green mb-6 font-bold screen-flicker">TOLL BOOTH NIGHTMARE</h1>
+      <p class="mb-4">Welcome to your new job as a toll booth officer at [REDACTED] Industrial Complex.</p>
+      <p class="mb-4">Located miles from the nearest town, you will control access to the facility.</p>
+      <p class="mb-4">Maintain your <span class="text-terminal-red">stress levels</span>. Monitor visitors. Follow protocol.</p>
+      <p class="mb-6">Some things are best left <span class="text-terminal-red">outside</span>.</p>
+      
+      <div class="mb-4">
+        <label for="officerName" class="block mb-2">ENTER OFFICER NAME:</label>
+        <input type="text" id="officerName" class="w-full bg-terminal-black border border-terminal-green p-2 text-terminal-green focus:outline-none focus:ring-1 focus:ring-terminal-green text-base" placeholder="NAME">
+      </div>
+      
+      <button id="startGame" class="w-full bg-terminal-black border border-terminal-green p-2 text-terminal-green hover:bg-terminal-green hover:text-black transition-colors">BEGIN SHIFT</button>
+    </div>
+  </div>
+
+  <!-- Main game interface -->
+  <div id="gameInterface" class="hidden flex flex-col h-screen">
+    <!-- Top status bar -->
+    <div class="terminal-window border-b border-terminal-green p-2 flex justify-between items-center">
+      <div class="flex items-center">
+        <span class="mr-2">OFFICER:</span>
+        <span id="displayOfficerName">UNKNOWN</span>
+      </div>
+      <div class="flex items-center">
+        <span class="mr-2">DATE:</span>
+        <span id="currentDate">--/--/----</span>
+      </div>
+      <div class="flex items-center">
+        <span class="mr-2">TIME:</span>
+        <span id="currentTime">--:--:--</span>
+      </div>
+      <div class="flex items-center">
+        <span class="mr-2">STRESS:</span>
+        <div class="w-24 bg-terminal-black border border-terminal-green h-4 relative">
+          <div id="stressBar" class="h-full bg-terminal-green" style="width: 20%;"></div>
+        </div>
+        <span id="stressLevel" class="ml-1">20%</span>
+      </div>
+    </div>
+
+    <!-- Main content area -->
+    <div class="flex flex-grow overflow-hidden">
+      <!-- Left panel: Active visitors -->
+      <div class="terminal-window border-r border-terminal-green w-full md:w-1/3 p-4 flex flex-col">
+        <h2 class="text-lg mb-3 pb-2 border-b border-terminal-green">ACTIVE VISITORS: <span id="visitorCount">0</span>/10</h2>
+        <div id="activeVisitorsList" class="overflow-y-auto flex-grow">
+          <!-- Active visitors will be listed here -->
+        </div>
+      </div>
+
+      <!-- Right panel: Event log -->
+      <div class="terminal-window border-r border-terminal-green w-full md:w-2/3 p-4 flex flex-col relative">
+        <div class="scanline"></div>
+        <h2 class="text-lg mb-3 pb-2 border-b border-terminal-green">SECURITY LOG</h2>
+        <div id="eventLog" class="overflow-y-auto flex-grow text-sm">
+          <!-- Event logs will be displayed here -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom panel: Controls and waiting visitors -->
+    <div class="terminal-window border-t border-terminal-green p-4">
+      <div class="flex flex-col md:flex-row gap-4">
+        <div class="flex-1">
+          <h2 class="text-lg mb-3 pb-2 border-b border-terminal-green">WAITING VISITORS: <span id="waitingCount">0</span>/20</h2>
+          <div id="waitingVisitorsList" class="overflow-y-auto max-h-40">
+            <!-- Waiting visitors will be listed here -->
+          </div>
+        </div>
+        <div class="flex-1 flex flex-col">
+          <h2 class="text-lg mb-3 pb-2 border-b border-terminal-green">CONTROLS</h2>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="checkInBtn" class="bg-terminal-black border border-terminal-green p-2 text-terminal-green hover:bg-terminal-green hover:text-black transition-colors" disabled>CHECK IN</button>
+            <button id="checkOutBtn" class="bg-terminal-black border border-terminal-green p-2 text-terminal-green hover:bg-terminal-green hover:text-black transition-colors" disabled>CHECK OUT</button>
+            <button id="securityBtn" class="bg-terminal-black border border-terminal-green p-2 text-terminal-green hover:bg-terminal-green hover:text-black transition-colors">SECURITY FEED</button>
+            <button id="maintainBtn" class="bg-terminal-black border border-terminal-green p-2 text-terminal-green hover:bg-terminal-green hover:text-black transition-colors">MAINTAIN SYSTEM</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notification popup -->
+    <div id="notificationPopup" class="hidden fixed top-10 right-10 terminal-window border border-terminal-green p-4 max-w-xs z-50">
+      <div class="flex justify-between items-start mb-2">
+        <h3 class="text-terminal-red">⚠ ATTENTION REQUIRED</h3>
+        <button id="closeNotification" class="text-terminal-green hover:text-terminal-red">✕</button>
+      </div>
+      <p id="notificationMessage" class="mb-3">A visitor requires your attention.</p>
+      <div id="notificationActions" class="flex gap-2">
+        <!-- Dynamic buttons will be added here -->
+      </div>
+    </div>
+
+    <!-- Return summary modal -->
+    <div id="returnSummaryModal" class="hidden fixed inset-0 bg-black bg-opacity-95 flex items-center justify-center z-50">
+      <div class="terminal-window p-6 md:p-8 max-w-xl w-full mx-4 border border-terminal-green rounded relative">
+        <div class="scanline"></div>
+        <h2 class="text-xl md:text-2xl text-terminal-green mb-4 font-bold">ABSENCE REPORT</h2>
+        <p class="mb-2">You were absent for <span id="absentTime">0</span> hours.</p>
+        <div id="summaryContent" class="max-h-96 overflow-y-auto mb-4">
+          <!-- Summary content goes here -->
+        </div>
+        <button id="confirmReturn" class="w-full bg-terminal-black border border-terminal-green p-2 text-terminal-green hover:bg-terminal-green hover:text-black transition-colors">RESUME SHIFT</button>
+      </div>
+    </div>
+
+    <!-- Security feed modal -->
+    <div id="securityModal" class="hidden fixed inset-0 bg-black bg-opacity-95 flex items-center justify-center z-50">
+      <div class="terminal-window p-6 md:p-8 max-w-xl w-full mx-4 border border-terminal-green rounded relative">
+        <div class="scanline"></div>
+        <h2 class="text-xl md:text-2xl text-terminal-green mb-4 font-bold">SECURITY FEED</h2>
+        <div id="securityContent" class="max-h-96 overflow-y-auto mb-4 space-y-4">
+          <!-- Security feed content goes here -->
+        </div>
+        <button id="closeSecurityFeed" class="w-full bg-terminal-black border border-terminal-green p-2 text-terminal-green hover:bg-terminal-green hover:text-black transition-colors">CLOSE FEED</button>
+      </div>
+    </div>
+
+    <!-- Game over modal -->
+    <div id="gameOverModal" class="hidden fixed inset-0 bg-black bg-opacity-95 flex items-center justify-center z-50">
+      <div class="terminal-window p-6 md:p-8 max-w-lg w-full mx-4 border border-terminal-red rounded relative">
+        <div class="scanline"></div>
+        <h2 class="text-xl md:text-2xl text-terminal-red mb-4 font-bold">SYSTEM FAILURE</h2>
+        <p class="mb-2 text-terminal-red">Your stress levels have reached critical levels.</p>
+        <p class="mb-4">You have been relieved of your duties.</p>
+        <p id="survivalTime" class="mb-6">You survived: 0 days, 0 hours, 0 minutes</p>
+        <button id="restartGame" class="w-full bg-terminal-black border border-terminal-red p-2 text-terminal-red hover:bg-terminal-red hover:text-black transition-colors">BEGIN NEW SHIFT</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Check for dark mode preference
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.classList.add('dark');
+    }
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+      if (event.matches) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    });
+
+    // Global game state
+    const gameState = {
+      officerName: '',
+      gameStartTime: null,
+      lastUpdateTime: null,
+      stressLevel: 20, // 0-100, 0 is game over
+      activeVisitors: [],
+      waitingVisitors: [],
+      eventLog: [],
+      isGameOver: false,
+      pendingCheckIn: null,
+      pendingCheckOut: null,
+      securityCameras: [
+        {id: 1, name: "MAIN GATE", status: "ONLINE"},
+        {id: 2, name: "PARKING LOT", status: "ONLINE"},
+        {id: 3, name: "LOBBY", status: "ONLINE"},
+        {id: 4, name: "BASEMENT CORRIDOR", status: "OFFLINE"},
+        {id: 5, name: "FACTORY FLOOR", status: "ONLINE"}
+      ]
+    };
+
+    // Constants
+    const MAX_ACTIVE_VISITORS = 10;
+    const MAX_WAITING_VISITORS = 20;
+    const MIN_ARRIVAL_INTERVAL = 10 * 60 * 1000; // 10 minutes
+    const MAX_ARRIVAL_INTERVAL = 60 * 60 * 1000; // 60 minutes
+    const STRESS_DECAY_RATE = 0.5; // Points per minute when nothing happens
+    const MAX_EVENT_LOG_SIZE = 100;
+
+    // Name generator arrays
+    const firstNames = [
+      "John", "Mary", "Robert", "Linda", "Michael", "Sarah", "David", "Jennifer", "Richard", "Elizabeth",
+      "Thomas", "Patricia", "Charles", "Barbara", "Daniel", "Susan", "Matthew", "Jessica", "Anthony", "Margaret",
+      "Mark", "Dorothy", "Donald", "Lisa", "Steven", "Nancy", "Paul", "Karen", "Andrew", "Betty",
+      "Kenneth", "Helen", "George", "Sandra", "Joshua", "Donna", "Kevin", "Carol", "Brian", "Ruth",
+      "Edward", "Sharon", "Ronald", "Michelle", "Timothy", "Laura", "Jason", "Amanda", "Jeffrey", "Melissa",
+      // Some slightly unusual names for variety
+      "Silas", "Esther", "Tobias", "Agatha", "Thaddeus", "Edith", "Cornelius", "Mabel", "Elias", "Phoebe"
+    ];
+
+    const lastNames = [
+      "Smith", "Johnson", "Williams", "Jones", "Brown", "Davis", "Miller", "Wilson", "Moore", "Taylor",
+      "Anderson", "Thomas", "Jackson", "White", "Harris", "Martin", "Thompson", "Garcia", "Martinez", "Robinson",
+      "Clark", "Rodriguez", "Lewis", "Lee", "Walker", "Hall", "Allen", "Young", "Hernandez", "King",
+      "Wright", "Lopez", "Hill", "Scott", "Green", "Adams", "Baker", "Gonzalez", "Nelson", "Carter",
+      "Mitchell", "Perez", "Roberts", "Turner", "Phillips", "Campbell", "Parker", "Evans", "Edwards", "Collins",
+      // Some slightly unusual lastnames for variety
+      "Blackwood", "Thornton", "Graves", "Frost", "Winter", "Shade", "Crane", "Sharpe", "Wolfe", "Glass"
+    ];
+
+    // Initialization
+    document.addEventListener('DOMContentLoaded', function() {
+      // Start game button click
+      document.getElementById('startGame').addEventListener('click', startGame);
+      
+      // Button event listeners
+      document.getElementById('checkInBtn').addEventListener('click', handleCheckIn);
+      document.getElementById('checkOutBtn').addEventListener('click', handleCheckOut);
+      document.getElementById('closeNotification').addEventListener('click', hideNotification);
+      document.getElementById('securityBtn').addEventListener('click', showSecurityFeed);
+      document.getElementById('closeSecurityFeed').addEventListener('click', hideSecurityFeed);
+      document.getElementById('maintainBtn').addEventListener('click', maintainSystem);
+      document.getElementById('confirmReturn').addEventListener('click', hideReturnSummary);
+      document.getElementById('restartGame').addEventListener('click', restartGame);
+      
+      // Load game if exists
+      loadGame();
+    });
+
+    function startGame() {
+      const officerNameInput = document.getElementById('officerName').value.trim();
+      if (!officerNameInput) {
+        // Shake the input field if empty
+        document.getElementById('officerName').classList.add('glitch');
+        setTimeout(() => {
+          document.getElementById('officerName').classList.remove('glitch');
+        }, 500);
+        return;
+      }
+      
+      // Initialize game state
+      gameState.officerName = officerNameInput;
+      gameState.gameStartTime = new Date();
+      gameState.lastUpdateTime = new Date();
+      gameState.stressLevel = 20;
+      gameState.activeVisitors = [];
+      gameState.waitingVisitors = [];
+      gameState.eventLog = [];
+      gameState.isGameOver = false;
+      
+      // Add initial log entries
+      addLogEntry(`System boot complete. Welcome, Officer ${gameState.officerName}.`);
+      addLogEntry(`Security protocols initialized. Visitor management system online.`);
+      
+      // Hide start modal, show game interface
+      document.getElementById('startModal').classList.add('hidden');
+      document.getElementById('gameInterface').classList.remove('hidden');
+      document.getElementById('displayOfficerName').textContent = gameState.officerName;
+      
+      // Start game loop
+      updateClock();
+      scheduleNextVisitor();
+      
+      // Set up regular updates
+      setInterval(updateGameState, 5000); // Update game state every 5 seconds
+      setInterval(saveGame, 30000); // Save game every 30 seconds
+    }
+
+    function updateClock() {
+      const now = new Date();
+      
+      // Update date and time display
+      document.getElementById('currentDate').textContent = now.toLocaleDateString();
+      document.getElementById('currentTime').textContent = now.toLocaleTimeString();
+      
+      requestAnimationFrame(updateClock);
+    }
+
+    function updateGameState() {
+      const now = new Date();
+      const timeDiff = (now - gameState.lastUpdateTime) / 1000; // in seconds
+      gameState.lastUpdateTime = now;
+      
+      // Skip updates if game is over
+      if (gameState.isGameOver) return;
+      
+      // Handle stress decay
+      if (gameState.stressLevel < 100) {
+        gameState.stressLevel = Math.max(0, gameState.stressLevel - (STRESS_DECAY_RATE * timeDiff / 60));
+      }
+      
+      // Update stress meter
+      updateStressDisplay();
+      
+      // Check for game over
+      if (gameState.stressLevel <= 0) {
+        gameOver();
+        return;
+      }
+      
+      // Process active visitors (check if any need to leave)
+      processActiveVisitors();
+      
+      // Process waiting visitors (update wait times)
+      processWaitingVisitors();
+      
+      // Random events based on time of day
+      maybeGenerateRandomEvent();
+    }
+
+    function updateStressDisplay() {
+      const stressBar = document.getElementById('stressBar');
+      const stressLevel = document.getElementById('stressLevel');
+      const percentage = Math.round(gameState.stressLevel);
+      
+      stressBar.style.width = `${percentage}%`;
+      stressLevel.textContent = `${percentage}%`;
+      
+      // Change color based on stress level
+      if (percentage <= 20) {
+        stressBar.style.backgroundColor = '#f33'; // Red for danger
+      } else if (percentage <= 50) {
+        stressBar.style.backgroundColor = '#fc3'; // Yellow for warning
+      } else {
+        stressBar.style.backgroundColor = '#0c3'; // Green for good
+      }
+    }
+
+    function generateVisitor(isWaiting = true) {
+      const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+      const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
+      const fullName = `${firstName} ${lastName}`;
+      
+      // Determine if this is a weird visitor (more likely at night)
+      const now = new Date();
+      const hour = now.getHours();
+      const isNightTime = hour < 6 || hour >= 20;
+      const weirdnessThreshold = isNightTime ? 0.3 : 0.1; // 30% chance at night, 10% during day
+      const isWeird = Math.random() < weirdnessThreshold;
+      
+      // Generate a visit duration (1-8 hours)
+      const visitDuration = Math.floor(Math.random() * 7 + 1) * 60 * 60 * 1000; // in ms
+      
+      // Generate waiting time (patience) for waiting visitors
+      const waitingTime = isWaiting ? (Math.floor(Math.random() * 7 + 1) * 60 * 60 * 1000) : 0; // 1-8 hours in ms
+      
+      // Generate arrival and expected departure times
+      const arrivalTime = new Date();
+      const expectedDepartureTime = new Date(arrivalTime.getTime() + visitDuration);
+      
+      // Generate visitor description (normal or weird)
+      let description;
+      
+      if (isWeird) {
+        const weirdDescriptions = [
+          `${fullName} - Wears a uniform with an unfamiliar logo. Eyes seem to reflect light oddly.`,
+          `${fullName} - Skin appears pale and waxy. Claims to be delivering "specialized equipment".`,
+          `${fullName} - Constantly muttering to themselves. Carries a briefcase that emits a faint humming sound.`,
+          `${fullName} - Wears excessive layers despite the weather. Avoids direct eye contact.`,
+          `${fullName} - Appears unnaturally still when not moving. Claims to be a "routine inspector".`,
+          `${fullName} - Face obscured by shadows despite bright lighting. Voice has a metallic quality.`,
+          `${fullName} - Shows employee ID that doesn't match facility records. Claims it's a "new format".`,
+          `${fullName} - Clothing is damp despite there being no rain. Smells of chemicals and salt.`,
+          `${fullName} - Moves with jerky, unnatural motions. Claims to be from "upper management".`,
+          `${fullName} - Has an identical twin who visits frequently. They never arrive together.`
+        ];
+        description = weirdDescriptions[Math.floor(Math.random() * weirdDescriptions.length)];
+      } else {
+        const normalDescriptions = [
+          `${fullName} - Regular delivery driver. Friendly demeanor.`,
+          `${fullName} - Factory employee. Carries standard-issue ID badge.`,
+          `${fullName} - Maintenance technician with toolbox. Scheduled repair visit.`,
+          `${fullName} - Corporate representative in formal attire. Here for inspection.`,
+          `${fullName} - Security consultant. Hired by management.`,
+          `${fullName} - Catering staff bringing supplies for the break room.`,
+          `${fullName} - IT specialist here to update the systems.`,
+          `${fullName} - Quality assurance inspector. Scheduled visit.`,
+          `${fullName} - New employee being shown around the facility.`,
+          `${fullName} - Delivery service dropping off packages for staff.`
+        ];
+        description = normalDescriptions[Math.floor(Math.random() * normalDescriptions.length)];
+      }
+      
+      return {
+        id: Date.now().toString(36) + Math.random().toString(36).substring(2),
+        name: fullName,
+        description: description,
+        arrivalTime: arrivalTime,
+        expectedDepartureTime: expectedDepartureTime,
+        waitingSince: isWaiting ? new Date() : null,
+        maxWaitTime: waitingTime,
+        isWeird: isWeird,
+        isDangerous: isWeird && Math.random() < 0.4, // 40% of weird visitors are dangerous
+      };
+    }
+
+    function scheduleNextVisitor() {
+      // Random time between MIN and MAX interval
+      const nextVisitorTime = MIN_ARRIVAL_INTERVAL + Math.random() * (MAX_ARRIVAL_INTERVAL - MIN_ARRIVAL_INTERVAL);
+      
+      setTimeout(() => {
+        // Only add new waiting visitor if there's space and game is not over
+        if (gameState.waitingVisitors.length < MAX_WAITING_VISITORS && !gameState.isGameOver) {
+          const newVisitor = generateVisitor(true);
+          gameState.waitingVisitors.push(newVisitor);
+          
+          // Update UI
+          updateWaitingVisitorsList();
+          
+          // Add log entry
+          addLogEntry(`Visitor arrived: ${newVisitor.name} is waiting at the gate.`);
+          
+          // Random chance to trigger a check-in notification
+          if (Math.random() < 0.7) { // 70% chance
+            triggerCheckInNotification(newVisitor);
+          }
+        }
+        
+        // Schedule next visitor
+        scheduleNextVisitor();
+      }, nextVisitorTime);
+    }
+
+    function processActiveVisitors() {
+      const now = new Date();
+      const departed = [];
+      
+      // Check for visitors who need to leave
+      gameState.activeVisitors.forEach(visitor => {
+        if (now >= visitor.expectedDepartureTime) {
+          // Random chance for visitor to leave on their own
+          if (Math.random() < 0.5) { // 50% chance
+            addLogEntry(`Visitor ${visitor.name} has checked out automatically.`);
+            departed.push(visitor.id);
+          } else {
+            // Otherwise, trigger a check-out notification
+            if (!gameState.pendingCheckOut) {
+              triggerCheckOutNotification(visitor);
+            }
+          }
+        }
+      });
+      
+      // Remove departed visitors
+      gameState.activeVisitors = gameState.activeVisitors.filter(v => !departed.includes(v.id));
+      
+      // Update UI
+      updateActiveVisitorsList();
+    }
+
+    function processWaitingVisitors() {
+      const now = new Date();
+      const impatient = [];
+      
+      // Check for visitors who have waited too long
+      gameState.waitingVisitors.forEach(visitor => {
+        const waitTime = now - visitor.waitingSince;
+        if (waitTime >= visitor.maxWaitTime) {
+          // Visitor has waited too long
+          impatient.push(visitor);
+        }
+      });
+      
+      // Handle impatient visitors
+      impatient.forEach(visitor => {
+        // Remove from waiting list
+        gameState.waitingVisitors = gameState.waitingVisitors.filter(v => v.id !== visitor.id);
+        
+        // Add stress based on how weird/dangerous the visitor was
+        const stressIncrease = visitor.isWeird ? (visitor.isDangerous ? 20 : 10) : 5;
+        increaseStress(stressIncrease);
+        
+        // Add log entry
+        addLogEntry(`⚠ INCIDENT: Visitor ${visitor.name} left angrily after waiting too long.`, 'incident');
+        
+        // Random consequences based on visitor type
+        if (visitor.isWeird && visitor.isDangerous) {
+          setTimeout(() => {
+            const consequences = [
+              `Strange sounds reported from the parking lot. Security investigating.`,
+              `Power fluctuations detected in sector 3. Maintenance notified.`,
+              `Unauthorized access attempt detected at east entrance.`,
+              `Multiple visitor ID badges suddenly reporting as invalid.`,
+              `CCTV camera #4 has gone offline unexpectedly.`
+            ];
+            const consequence = consequences[Math.floor(Math.random() * consequences.length)];
+            addLogEntry(`⚠ SECURITY ALERT: ${consequence}`, 'alert');
+            increaseStress(10);
+          }, 5 * 60 * 1000); // 5 minutes later
+        }
+      });
+      
+      // Update UI
+      updateWaitingVisitorsList();
+    }
+
+    function triggerCheckInNotification(visitor) {
+      // Only trigger if no other check-in is pending
+      if (gameState.pendingCheckIn) return;
+      
+      gameState.pendingCheckIn = visitor;
+      
+      // Show notification
+      const notificationPopup = document.getElementById('notificationPopup');
+      const notificationMessage = document.getElementById('notificationMessage');
+      const notificationActions = document.getElementById('notificationActions');
+      
+      notificationMessage.textContent = `Visitor ${visitor.name} is requesting entry.`;
+      notificationActions.innerHTML = `
+        <button id="approveCheckIn" class="bg-terminal-black border border-terminal-green p-2 text-terminal-green hover:bg-terminal-green hover:text-black transition-colors">APPROVE</button>
+        <button id="denyCheckIn" class="bg-terminal-black border border-terminal-red p-2 text-terminal-red hover:bg-terminal-red hover:text-black transition-colors">DENY</button>
+      `;
+      
+      // Add event listeners
+      document.getElementById('approveCheckIn').addEventListener('click', () => {
+        approveCheckIn();
+        hideNotification();
+      });
+      document.getElementById('denyCheckIn').addEventListener('click', () => {
+        denyCheckIn();
+        hideNotification();
+      });
+      
+      notificationPopup.classList.remove('hidden');
+      
+      // Enable check-in button
+      document.getElementById('checkInBtn').disabled = false;
+    }
+
+    function triggerCheckOutNotification(visitor) {
+      // Only trigger if no other check-out is pending
+      if (gameState.pendingCheckOut) return;
+      
+      gameState.pendingCheckOut = visitor;
+      
+      // Show notification
+      const notificationPopup = document.getElementById('notificationPopup');
+      const notificationMessage = document.getElementById('notificationMessage');
+      const notificationActions = document.getElementById('notificationActions');
+      
+      notificationMessage.textContent = `Visitor ${visitor.name} needs to check out.`;
+      notificationActions.innerHTML = `
+        <button id="approveCheckOut" class="bg-terminal-black border border-terminal-green p-2 text-terminal-green hover:bg-terminal-green hover:text-black transition-colors">CHECK OUT</button>
+      `;
+      
+      // Add event listener
+      document.getElementById('approveCheckOut').addEventListener('click', () => {
+        approveCheckOut();
+        hideNotification();
+      });
+      
+      notificationPopup.classList.remove('hidden');
+      
+      // Enable check-out button
+      document.getElementById('checkOutBtn').disabled = false;
+    }
+
+    function hideNotification() {
+      document.getElementById('notificationPopup').classList.add('hidden');
+    }
+
+    function handleCheckIn() {
+      if (gameState.pendingCheckIn) {
+        approveCheckIn();
+      }
+    }
+
+    function handleCheckOut() {
+      if (gameState.pendingCheckOut) {
+        approveCheckOut();
+      }
+    }
+
+    function approveCheckIn() {
+      if (!gameState.pendingCheckIn) return;
+      
+      const visitor = gameState.pendingCheckIn;
+      
+      // Remove from waiting list
+      gameState.waitingVisitors = gameState.waitingVisitors.filter(v => v.id !== visitor.id);
+      
+      // Add to active visitors if there's space
+      if (gameState.activeVisitors.length < MAX_ACTIVE_VISITORS) {
+        gameState.activeVisitors.push(visitor);
+        addLogEntry(`Visitor ${visitor.name} has been checked in.`);
+        
+        // If dangerous, add stress
+        if (visitor.isDangerous) {
+          increaseStress(10);
+          
+          // Schedule a random disturbing event
+          scheduleDisturbingEvent(visitor);
+        }
+      } else {
+        addLogEntry(`⚠ ERROR: Maximum visitor capacity reached. ${visitor.name} denied entry.`, 'error');
+        increaseStress(5);
+      }
+      
+      // Clear pending check-in
+      gameState.pendingCheckIn = null;
+      
+      // Update UI
+      updateActiveVisitorsList();
+      updateWaitingVisitorsList();
+      document.getElementById('checkInBtn').disabled = true;
+    }
+
+    function denyCheckIn() {
+      if (!gameState.pendingCheckIn) return;
+      
+      const visitor = gameState.pendingCheckIn;
+      
+      // Remove from waiting list
+      gameState.waitingVisitors = gameState.waitingVisitors.filter(v => v.id !== visitor.id);
+      
+      // Add log entry
+      addLogEntry(`Visitor ${visitor.name} has been denied entry.`);
+      
+      // If visitor is weird or dangerous, they might get angry
+      if (visitor.isWeird) {
+        const angerChance = visitor.isDangerous ? 0.8 : 0.5; // 80% for dangerous, 50% for weird
+        
+        if (Math.random() < angerChance) {
+          increaseStress(visitor.isDangerous ? 15 : 8);
+          
+          setTimeout(() => {
+            const reactions = [
+              `${visitor.name} seen lingering by the fence. Security notified.`,
+              `Strange markings found near gate after ${visitor.name} left.`,
+              `Repeated unsuccessful key card scans detected after denial.`,
+              `Employee reports being followed on their way home.`,
+              `Anonymous complaint filed against Officer ${gameState.officerName}.`
+            ];
+            const reaction = reactions[Math.floor(Math.random() * reactions.length)];
+            addLogEntry(`⚠ SECURITY ALERT: ${reaction}`, 'alert');
+            increaseStress(5);
+          }, 3 * 60 * 1000); // 3 minutes later
+        }
+      }
+      
+      // Clear pending check-in
+      gameState.pendingCheckIn = null;
+      
+      // Update UI
+      updateWaitingVisitorsList();
+      document.getElementById('checkInBtn').disabled = true;
+    }
+
+    function approveCheckOut() {
+      if (!gameState.pendingCheckOut) return;
+      
+      const visitor = gameState.pendingCheckOut;
+      
+      // Remove from active visitors
+      gameState.activeVisitors = gameState.activeVisitors.filter(v => v.id !== visitor.id);
+      
+      // Add log entry
+      addLogEntry(`Visitor ${visitor.name} has checked out.`);
+      
+      // Clear pending check-out
+      gameState.pendingCheckOut = null;
+      
+      // Update UI
+      updateActiveVisitorsList();
+      document.getElementById('checkOutBtn').disabled = true;
+    }
+
+    function scheduleDisturbingEvent(visitor) {
+      // Random time between 15-45 minutes
+      const delayTime = (15 + Math.random() * 30) * 60 * 1000;
+      
+      setTimeout(() => {
+        // Check if visitor is still active
+        if (gameState.activeVisitors.some(v => v.id === visitor.id) && !gameState.isGameOver) {
+          const events = [
+            `Strange noises reported from area last visited by ${visitor.name}.`,
+            `Employee complained of headache after meeting with ${visitor.name}.`,
+            `Security camera glitched while tracking ${visitor.name}.`,
+            `${visitor.name} observed entering unauthorized area. Security alerted.`,
+            `Unusual electromagnetic readings detected near ${visitor.name}'s location.`
+          ];
+          
+          const event = events[Math.floor(Math.random() * events.length)];
+          addLogEntry(`⚠ UNUSUAL ACTIVITY: ${event}`, 'warning');
+          
+          // Increase stress
+          increaseStress(8);
+        }
+      }, delayTime);
+    }
+
+    function maybeGenerateRandomEvent() {
+      // Determine chance based on time of day
+      const now = new Date();
+      const hour = now.getHours();
+      const isNightTime = hour < 6 || hour >= 20;
+      
+      // Higher chance at night
+      const eventChance = isNightTime ? 0.02 : 0.01; // 2% at night, 1% during day
+      
+      if (Math.random() < eventChance) {
+        generateRandomEvent();
+      }
+    }
+
+    function generateRandomEvent() {
+      const minorEvents = [
+        "Flickering lights reported in eastern corridor.",
+        "Brief power fluctuation detected in main circuit.",
+        "Unusual temperature drop in sector 4.",
+        "Radio static on security channel, undetermined cause.",
+        "Perimeter sensor triggered - animal incursion likely."
+      ];
+      
+      const majorEvents = [
+        "Multiple employees reporting unexplained sounds from vent system.",
+        "Security camera #7 showing unexplained figure before failing.",
+        "Maintenance reports unusual organic material in basement pipes.",
+        "HR received email from employee who has been on leave for months.",
+        "Night shift reports strange lights in the woods beyond the fence."
+      ];
+      
+      const severeEvents = [
+        "▓▓▓REDACTED▓▓▓ found in executive restroom. Biohazard team deployed.",
+        "Unidentified signal broadcasting from inside compound. IT investigating.",
+        "Employee #8102 found disoriented, claiming 'someone else is wearing their face'.",
+        "Third floor lab lockdown initiated automatically. Reason: ▓▓▓CLASSIFIED▓▓▓.",
+        "Night shift supervisor reports 'duplicate' employee seen entering restricted area."
+      ];
+      
+      // Determine severity (weighted toward minor events)
+      const severity = Math.random();
+      let event;
+      let stressIncrease;
+      
+      if (severity < 0.7) { // 70% minor
+        event = minorEvents[Math.floor(Math.random() * minorEvents.length)];
+        stressIncrease = 3;
+      } else if (severity < 0.95) { // 25% major
+        event = majorEvents[Math.floor(Math.random() * majorEvents.length)];
+        stressIncrease = 8;
+      } else { // 5% severe
+        event = severeEvents[Math.floor(Math.random() * severeEvents.length)];
+        stressIncrease = 15;
+      }
+      
+      // Add log entry
+      const prefix = severity < 0.7 ? "NOTICE" : (severity < 0.95 ? "WARNING" : "⚠ ALERT");
+      addLogEntry(`${prefix}: ${event}`, severity < 0.7 ? 'notice' : (severity < 0.95 ? 'warning' : 'alert'));
+      
+      // Increase stress
+      increaseStress(stressIncrease);
+    }
+
+    function increaseStress(amount) {
+      gameState.stressLevel = Math.max(0, Math.min(100, gameState.stressLevel - amount));
+      updateStressDisplay();
+      
+      // Check for game over
+      if (gameState.stressLevel <= 0) {
+        gameOver();
+      }
+    }
+
+    function decreaseStress(amount) {
+      gameState.stressLevel = Math.max(0, Math.min(100, gameState.stressLevel + amount));
+      updateStressDisplay();
+    }
+
+    function showSecurityFeed() {
+      const securityModal = document.getElementById('securityModal');
+      const securityContent = document.getElementById('securityContent');
+      
+      // Generate security feed content
+      let content = '';
+      
+      gameState.securityCameras.forEach(camera => {
+        if (camera.status === "OFFLINE") {
+          content += `<div class="p-3 border border-terminal-red">
+            <h3 class="text-terminal-red">${camera.name} - ${camera.status}</h3>
+            <p>Feed unavailable. Contact maintenance.</p>
+          </div>`;
+        } else {
+          const descriptions = [
+            "No movement detected.",
+            "Normal activity observed.",
+            "Authorized personnel only.",
+            "All systems normal."
+          ];
+          
+          // At night, add chance for unsettling descriptions
+          const now = new Date();
+          const hour = now.getHours();
+          const isNightTime = hour < 6 || hour >= 20;
+          
+          if (isNightTime && Math.random() < 0.3) {
+            descriptions.push(
+              "Movement detected at edge of frame.",
+              "Feed showing minor visual artifacts.",
+              "Unidentified shadow briefly visible.",
+              "Light source flickering intermittently.",
+              "Audio picking up faint whispers."
+            );
+          }
+          
+          const description = descriptions[Math.floor(Math.random() * descriptions.length)];
+          
+          content += `<div class="p-3 border border-terminal-green">
+            <h3>${camera.name} - ${camera.status}</h3>
+            <p>${description}</p>
+          </div>`;
+        }
+      });
+      
+      securityContent.innerHTML = content;
+      securityModal.classList.remove('hidden');
+    }
+
+    function hideSecurityFeed() {
+      document.getElementById('securityModal').classList.add('hidden');
+    }
+
+    function maintainSystem() {
+      // Disable button temporarily
+      const maintainBtn = document.getElementById('maintainBtn');
+      maintainBtn.disabled = true;
+      maintainBtn.textContent = "MAINTAINING...";
+      
+      // Add log entry
+      addLogEntry(`System maintenance initiated by Officer ${gameState.officerName}.`);
+      
+      // Show progress in logs
+      setTimeout(() => {
+        addLogEntry(`Running diagnostics... 33% complete.`);
+      }, 1000);
+      
+      setTimeout(() => {
+        addLogEntry(`Running diagnostics... 67% complete.`);
+      }, 2000);
+      
+      setTimeout(() => {
+        addLogEntry(`Running diagnostics... 100% complete.`);
+        addLogEntry(`Maintenance complete. System performance optimized.`);
+        
+        // Reduce stress
+        decreaseStress(5);
+        
+        // Re-enable button
+        maintainBtn.disabled = false;
+        maintainBtn.textContent = "MAINTAIN SYSTEM";
+      }, 3000);
+    }
+
+    function updateActiveVisitorsList() {
+      const activeVisitorsList = document.getElementById('activeVisitorsList');
+      const visitorCount = document.getElementById('visitorCount');
+      
+      // Update count
+      visitorCount.textContent = gameState.activeVisitors.length;
+      
+      // Update list
+      activeVisitorsList.innerHTML = '';
+      
+      if (gameState.activeVisitors.length === 0) {
+        activeVisitorsList.innerHTML = '<p class="text-gray-500">No active visitors.</p>';
+        return;
+      }
+      
+      gameState.activeVisitors.forEach(visitor => {
+        const now = new Date();
+        const timeLeft = visitor.expectedDepartureTime - now;
+        const hoursLeft = Math.floor(timeLeft / (60 * 60 * 1000));
+        const minutesLeft = Math.floor((timeLeft % (60 * 60 * 1000)) / (60 * 1000));
+        
+        const visitorElement = document.createElement('div');
+        visitorElement.className = 'mb-3 p-2 border border-terminal-green';
+        
+        // Add weird styling for weird visitors
+        if (visitor.isWeird) {
+          visitorElement.classList.add('border-terminal-red');
+        }
+        
+        visitorElement.innerHTML = `
+          <div class="flex justify-between items-center">
+            <div class="font-bold ${visitor.isWeird ? 'text-terminal-red' : ''}">${visitor.name}</div>
+            <div class="text-sm ${timeLeft < 30 * 60 * 1000 ? 'text-terminal-red' : ''}">${hoursLeft}h ${minutesLeft}m left</div>
+          </div>
+          <div class="text-sm mt-1">${visitor.description}</div>
+        `;
+        
+        activeVisitorsList.appendChild(visitorElement);
+      });
+    }
+
+    function updateWaitingVisitorsList() {
+      const waitingVisitorsList = document.getElementById('waitingVisitorsList');
+      const waitingCount = document.getElementById('waitingCount');
+      
+      // Update count
+      waitingCount.textContent = gameState.waitingVisitors.length;
+      
+      // Update list
+      waitingVisitorsList.innerHTML = '';
+      
+      if (gameState.waitingVisitors.length === 0) {
+        waitingVisitorsList.innerHTML = '<p class="text-gray-500">No waiting visitors.</p>';
+        return;
+      }
+      
+      gameState.waitingVisitors.forEach(visitor => {
+        const now = new Date();
+        const waitingTime = now - visitor.waitingSince;
+        const timeLeft = visitor.maxWaitTime - waitingTime;
+        
+        const hoursWaited = Math.floor(waitingTime / (60 * 60 * 1000));
+        const minutesWaited = Math.floor((waitingTime % (60 * 60 * 1000)) / (60 * 1000));
+        
+        const hoursLeft = Math.floor(timeLeft / (60 * 60 * 1000));
+        const minutesLeft = Math.floor((timeLeft % (60 * 60 * 1000)) / (60 * 1000));
+        
+        const visitorElement = document.createElement('div');
+        visitorElement.className = 'mb-3 p-2 border border-terminal-green';
+        
+        // Red border if less than 30 minutes left
+        if (timeLeft < 30 * 60 * 1000) {
+          visitorElement.classList.replace('border-terminal-green', 'border-terminal-red');
+        }
+        
+        visitorElement.innerHTML = `
+          <div class="flex justify-between items-center">
+            <div class="font-bold">${visitor.name}</div>
+            <div class="text-sm ${timeLeft < 30 * 60 * 1000 ? 'text-terminal-red' : ''}">${hoursLeft}h ${minutesLeft}m patience left</div>
+          </div>
+          <div class="text-sm mt-1">Waiting: ${hoursWaited}h ${minutesWaited}m</div>
+        `;
+        
+        waitingVisitorsList.appendChild(visitorElement);
+      });
+    }
+
+    function addLogEntry(message, type = 'info') {
+      const now = new Date();
+      const timestamp = now.toLocaleTimeString();
+      
+      // Create new log entry
+      const logEntry = {
+        timestamp: now,
+        formattedTime: timestamp,
+        message: message,
+        type: type
+      };
+      
+      // Add to beginning of the log (newest first)
+      gameState.eventLog.unshift(logEntry);
+      
+      // Trim log if it gets too long
+      if (gameState.eventLog.length > MAX_EVENT_LOG_SIZE) {
+        gameState.eventLog = gameState.eventLog.slice(0, MAX_EVENT_LOG_SIZE);
+      }
+      
+      // Update UI
+      updateEventLog();
+    }
+
+    function updateEventLog() {
+      const eventLogElement = document.getElementById('eventLog');
+      eventLogElement.innerHTML = '';
+      
+      gameState.eventLog.forEach(entry => {
+        const logItem = document.createElement('div');
+        logItem.className = 'mb-2 pb-1 border-b border-gray-700';
+        
+        // Add classes based on log type
+        if (entry.type === 'warning') {
+          logItem.classList.add('text-yellow-400');
+        } else if (entry.type === 'alert' || entry.type === 'error') {
+          logItem.classList.add('text-terminal-red');
+        } else if (entry.type === 'incident') {
+          logItem.classList.add('text-terminal-red', 'font-bold');
+        }
+        
+        logItem.innerHTML = `
+          <div class="flex items-start">
+            <span class="text-gray-500 mr-2">[${entry.formattedTime}]</span>
+            <span>${entry.message}</span>
+          </div>
+        `;
+        
+        eventLogElement.appendChild(logItem);
+      });
+    }
+
+    function gameOver() {
+      gameState.isGameOver = true;
+      
+      // Calculate how long the player survived
+      const gameStartTime = gameState.gameStartTime;
+      const endTime = new Date();
+      const timeDiff = endTime - gameStartTime;
+      
+      const days = Math.floor(timeDiff / (24 * 60 * 60 * 1000));
+      const hours = Math.floor((timeDiff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+      const minutes = Math.floor((timeDiff % (60 * 60 * 1000)) / (60 * 1000));
+      
+      // Show game over modal
+      document.getElementById('survivalTime').textContent = `You survived: ${days} days, ${hours} hours, ${minutes} minutes`;
+      document.getElementById('gameOverModal').classList.remove('hidden');
+      
+      // Add final log entry
+      addLogEntry(`⚠ CRITICAL: Officer ${gameState.officerName} removed from duty due to stress levels.`, 'alert');
+    }
+
+    function restartGame() {
+      // Reset game state
+      localStorage.removeItem('tollBoothSave');
+      
+      // Reload page to start fresh
+      location.reload();
+    }
+
+    function saveGame() {
+      if (gameState.isGameOver) return;
+      
+      const saveData = {
+        officerName: gameState.officerName,
+        gameStartTime: gameState.gameStartTime.toISOString(),
+        lastUpdateTime: new Date().toISOString(),
+        stressLevel: gameState.stressLevel,
+        activeVisitors: gameState.activeVisitors,
+        waitingVisitors: gameState.waitingVisitors,
+        eventLog: gameState.eventLog,
+        securityCameras: gameState.securityCameras
+      };
+      
+      try {
+        localStorage.setItem('tollBoothSave', JSON.stringify(saveData));
+      } catch (error) {
+        console.error('Error saving game:', error);
+      }
+    }
+
+    function loadGame() {
+      try {
+        const saveData = localStorage.getItem('tollBoothSave');
+        
+        if (saveData) {
+          const parsedData = JSON.parse(saveData);
+          
+          // Restore game state
+          gameState.officerName = parsedData.officerName;
+          gameState.gameStartTime = new Date(parsedData.gameStartTime);
+          gameState.lastUpdateTime = new Date(parsedData.lastUpdateTime);
+          gameState.stressLevel = parsedData.stressLevel;
+          gameState.activeVisitors = parsedData.activeVisitors;
+          gameState.waitingVisitors = parsedData.waitingVisitors;
+          gameState.eventLog = parsedData.eventLog;
+          gameState.securityCameras = parsedData.securityCameras || gameState.securityCameras;
+          
+          // Convert date strings back to Date objects
+          gameState.activeVisitors.forEach(visitor => {
+            visitor.arrivalTime = new Date(visitor.arrivalTime);
+            visitor.expectedDepartureTime = new Date(visitor.expectedDepartureTime);
+          });
+          
+          gameState.waitingVisitors.forEach(visitor => {
+            visitor.waitingSince = new Date(visitor.waitingSince);
+            visitor.arrivalTime = new Date(visitor.arrivalTime);
+            visitor.expectedDepartureTime = new Date(visitor.expectedDepartureTime);
+          });
+          
+          gameState.eventLog.forEach(entry => {
+            entry.timestamp = new Date(entry.timestamp);
+          });
+          
+          // Calculate offline time
+          const now = new Date();
+          const offlineTime = now - gameState.lastUpdateTime;
+          
+          // If significant time has passed, simulate offline progression
+          if (offlineTime > 5 * 60 * 1000) { // If more than 5 minutes
+            simulateOfflineProgression(offlineTime);
+          }
+          
+          // Skip start screen
+          document.getElementById('startModal').classList.add('hidden');
+          document.getElementById('gameInterface').classList.remove('hidden');
+          document.getElementById('displayOfficerName').textContent = gameState.officerName;
+          
+          // Update UI
+          updateClock();
+          updateStressDisplay();
+          updateActiveVisitorsList();
+          updateWaitingVisitorsList();
+          updateEventLog();
+          
+          // Start game loop
+          setInterval(updateGameState, 5000);
+          setInterval(saveGame, 30000);
+          
+          // Schedule next visitor
+          scheduleNextVisitor();
+        }
+      } catch (error) {
+        console.error('Error loading game:', error);
+        // If loading fails, start a new game
+      }
+    }
+
+    function simulateOfflineProgression(timePassed) {
+      const hoursOffline = timePassed / (60 * 60 * 1000);
+      
+      // Prepare summary
+      const summary = [];
+      const events = [];
+      
+      // Handle active visitors
+      const departedVisitors = [];
+      
+      gameState.activeVisitors.forEach(visitor => {
+        const now = new Date();
+        if (visitor.expectedDepartureTime <= now) {
+          departedVisitors.push(visitor);
+          events.push(`Visitor ${visitor.name} checked out during your absence.`);
+        }
+      });
+      
+      // Remove departed visitors
+      gameState.activeVisitors = gameState.activeVisitors.filter(visitor => 
+        !departedVisitors.some(v => v.id === visitor.id)
+      );
+      
+      // Handle waiting visitors
+      const leftVisitors = [];
+      let stressChange = 0;
+      
+      gameState.waitingVisitors.forEach(visitor => {
+        const now = new Date();
+        const waitTime = now - visitor.waitingSince;
+        
+        if (waitTime >= visitor.maxWaitTime) {
+          leftVisitors.push(visitor);
+          events.push(`Visitor ${visitor.name} left angrily after waiting too long.`);
+          
+          // Add stress based on visitor type
+          if (visitor.isWeird && visitor.isDangerous) {
+            events.push(`⚠ INCIDENT: Security reported unusual activity following ${visitor.name}'s departure.`);
+            stressChange -= 10;
+          } else if (visitor.isWeird) {
+            stressChange -= 5;
+          } else {
+            stressChange -= 2;
+          }
+        }
+      });
+      
+      // Remove left visitors
+      gameState.waitingVisitors = gameState.waitingVisitors.filter(visitor => 
+        !leftVisitors.some(v => v.id === visitor.id)
+      );
+      
+      // Generate random events based on time passed
+      const eventCount = Math.floor(hoursOffline / 3) + (Math.random() < 0.3 ? 1 : 0);
+      
+      for (let i = 0; i < eventCount; i++) {
+        // More severe events if offline for longer
+        const severity = Math.random() * Math.min(1, hoursOffline / 24);
+        
+        if (severity < 0.6) {
+          events.push("Minor security alert triggered and resolved automatically.");
+          stressChange -= 1;
+        } else if (severity < 0.9) {
+          events.push("⚠ WARNING: Unusual readings detected in sector 3. Maintenance notified.");
+          stressChange -= 3;
+        } else {
+          events.push("⚠ ALERT: Unauthorized entry attempt detected. Security deployed.");
+          stressChange -= 8;
+        }
+      }
+      
+      // Natural stress recovery if nothing bad happened
+      if (events.length === 0) {
+        stressChange += Math.min(20, hoursOffline * 2);
+      }
+      
+      // Apply stress change
+      gameState.stressLevel = Math.max(0, Math.min(100, gameState.stressLevel + stressChange));
+      
+      // Check for game over
+      if (gameState.stressLevel <= 0) {
+        gameState.isGameOver = true;
+        gameOver();
+        return;
+      }
+      
+      // Add summary information
+      summary.push(`You were absent for ${Math.floor(hoursOffline)} hours and ${Math.floor((hoursOffline % 1) * 60)} minutes.`);
+      summary.push(`${departedVisitors.length} visitors checked out.`);
+      summary.push(`${leftVisitors.length} visitors left without checking in.`);
+      
+      if (stressChange > 0) {
+        summary.push(`Your stress level decreased by ${Math.abs(stressChange.toFixed(1))}%.`);
+      } else if (stressChange < 0) {
+        summary.push(`Your stress level increased by ${Math.abs(stressChange.toFixed(1))}%.`);
+      }
+      
+      // Add events to log
+      events.forEach(event => {
+        addLogEntry(event);
+      });
+      
+      // Show return summary
+      document.getElementById('absentTime').textContent = `${Math.floor(hoursOffline)} hours and ${Math.floor((hoursOffline % 1) * 60)} minutes`;
+      
+      const summaryContent = document.getElementById('summaryContent');
+      summaryContent.innerHTML = `
+        <div class="mb-4">
+          <h3 class="text-terminal-green mb-2">SUMMARY:</h3>
+          <ul class="list-disc pl-5">
+            ${summary.map(item => `<li>${item}</li>`).join('')}
+          </ul>
+        </div>
+        ${events.length > 0 ? `
+          <div>
+            <h3 class="text-terminal-green mb-2">EVENTS:</h3>
+            <ul class="list-disc pl-5">
+              ${events.map(event => `<li>${event}</li>`).join('')}
+            </ul>
+          </div>
+        ` : ''}
+      `;
+      
+      document.getElementById('returnSummaryModal').classList.remove('hidden');
+    }
+
+    function hideReturnSummary() {
+      document.getElementById('returnSummaryModal').classList.add('hidden');
+    }
+  </script>
+</body>
+</html>
